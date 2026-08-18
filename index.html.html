@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phone Number Checker — Validate & Breach Check</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/libphonenumber-js/1.11.4/libphonenumber-js.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1117;
+    --card:#171a23;
+    --border:#262b3a;
+    --text:#e8eaf0;
+    --muted:#8a90a3;
+    --accent:#5b8cff;
+    --accent-soft:rgba(91,140,255,0.12);
+    --good:#3ecf8e;
+    --bad:#ff5c72;
+    --warn:#ffb454;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(circle at top, #171c2b, #0f1117 60%);
+    color:var(--text);
+    min-height:100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:48px 16px;
+  }
+  .wrap{width:100%;max-width:560px;}
+  h1{font-size:1.5rem;margin:0 0 4px;}
+  .sub{color:var(--muted);margin:0 0 28px;font-size:0.92rem;}
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:24px;
+    margin-bottom:20px;
+  }
+  label{display:block;font-size:0.85rem;color:var(--muted);margin-bottom:8px;}
+  .row{display:flex;gap:10px;}
+  input[type=text]{
+    flex:1;
+    background:#0f1117;
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:12px 14px;
+    border-radius:10px;
+    font-size:0.98rem;
+    outline:none;
+  }
+  input[type=text]:focus{border-color:var(--accent);}
+  select{
+    background:#0f1117;
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:12px 10px;
+    border-radius:10px;
+    font-size:0.95rem;
+  }
+  button{
+    margin-top:14px;
+    width:100%;
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    padding:13px;
+    border-radius:10px;
+    font-size:0.98rem;
+    font-weight:600;
+    cursor:pointer;
+    transition:opacity .15s;
+  }
+  button:hover{opacity:0.9;}
+  button:disabled{opacity:0.5;cursor:not-allowed;}
+  .result{margin-top:18px;}
+  .kv{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:0.92rem;}
+  .kv:last-child{border-bottom:none;}
+  .kv span:first-child{color:var(--muted);}
+  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:0.78rem;font-weight:600;}
+  .badge.good{background:rgba(62,207,142,0.15);color:var(--good);}
+  .badge.bad{background:rgba(255,92,114,0.15);color:var(--bad);}
+  .badge.warn{background:rgba(255,180,84,0.15);color:var(--warn);}
+  .section-title{font-size:0.78rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin:0 0 12px;}
+  .breach-item{
+    background:var(--accent-soft);
+    border-radius:10px;
+    padding:12px 14px;
+    margin-bottom:8px;
+    font-size:0.9rem;
+  }
+  .breach-item b{display:block;margin-bottom:3px;}
+  .breach-item .cats{color:var(--muted);font-size:0.82rem;}
+  .empty{color:var(--muted);font-size:0.9rem;padding:8px 0;}
+  .footer-note{color:var(--muted);font-size:0.78rem;margin-top:24px;text-align:center;line-height:1.5;}
+  .footer-note a{color:var(--accent);text-decoration:none;}
+  .loading{color:var(--muted);font-size:0.9rem;}
+  .error-box{
+    background:rgba(255,92,114,0.1);
+    border:1px solid rgba(255,92,114,0.3);
+    color:var(--bad);
+    padding:12px 14px;
+    border-radius:10px;
+    font-size:0.88rem;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Phone Number Checker</h1>
+  <p class="sub">Validate a number and check if it's appeared in known data breaches.</p>
+
+  <div class="card">
+    <label for="phoneInput">Phone number</label>
+    <div class="row">
+      <select id="countrySelect">
+        <option value="PH" selected>PH +63</option>
+        <option value="US">US +1</option>
+        <option value="GB">GB +44</option>
+        <option value="AU">AU +61</option>
+        <option value="SG">SG +65</option>
+        <option value="IN">IN +91</option>
+        <option value="">Other (use +country code)</option>
+      </select>
+      <input type="text" id="phoneInput" placeholder="9171234567" autocomplete="off">
+    </div>
+    <button id="checkBtn">Check Number</button>
+    <div id="output"></div>
+  </div>
+
+  <p class="footer-note">
+    Validation runs entirely in your browser via libphonenumber-js.<br>
+    Breach data powered by <a href="https://leakcheck.io" target="_blank" rel="noopener">LeakCheck</a> (public, no-key API — source names and exposed data categories only).
+  </p>
+</div>
+
+<script>
+const { parsePhoneNumberFromString } = libphonenumber;
+
+// PH mobile prefix -> carrier lookup (public info; national significant number, no leading 0/+63)
+// Note: since mobile number portability (2021), a number can be ported to a different
+// carrier than its original prefix — this is "likely provider," not guaranteed.
+const PH_PREFIX_CARRIER = {
+  // Globe / TM
+  '817':'Globe','904':'Globe','905':'Globe','906':'Globe','915':'Globe','916':'Globe','917':'Globe',
+  '926':'Globe','927':'Globe','935':'Globe','936':'Globe','945':'Globe','953':'Globe','954':'Globe',
+  '956':'Globe','965':'Globe','966':'Globe','967':'Globe','975':'Globe','976':'Globe','977':'Globe',
+  '978':'Globe','994':'Globe','995':'Globe','996':'Globe','997':'Globe',
+  // Smart / TNT / Sun
+  '813':'Smart','908':'Smart','909':'Smart','910':'Smart','912':'Smart','913':'Smart','918':'Smart',
+  '919':'Smart','920':'Smart','921':'Smart','922':'Smart','928':'Smart','929':'Smart','930':'Smart',
+  '938':'Smart','939':'Smart','946':'Smart','947':'Smart','948':'Smart','949':'Smart','950':'Smart',
+  '951':'Smart','961':'Smart','963':'Smart','968':'Smart','970':'Smart','981':'Smart','989':'Smart',
+  '992':'Smart','998':'Smart','999':'Smart',
+  // DITO
+  '895':'DITO','896':'DITO','897':'DITO','991':'DITO',
+};
+
+function guessPhCarrier(nationalNumber){
+  // nationalNumber is a string like "9453570503" (10 digits, no leading 0)
+  const prefix = nationalNumber.slice(0, 3);
+  return PH_PREFIX_CARRIER[prefix] || 'Unknown / not in lookup table';
+}
+
+const checkBtn = document.getElementById('checkBtn');
+const output = document.getElementById('output');
+const phoneInput = document.getElementById('phoneInput');
+const countrySelect = document.getElementById('countrySelect');
+
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function checkNumber(){
+  const raw = phoneInput.value.trim();
+  if(!raw){
+    output.innerHTML = '<div class="error-box">Enter a phone number first.</div>';
+    return;
+  }
+
+  checkBtn.disabled = true;
+  checkBtn.textContent = 'Checking…';
+  output.innerHTML = '<p class="loading">Validating number…</p>';
+
+  // --- Step 1: Validate & parse with libphonenumber-js (client-side, no key) ---
+  const country = countrySelect.value || undefined;
+  let parsed;
+  try {
+    parsed = parsePhoneNumberFromString(raw, country);
+  } catch (e) {
+    parsed = null;
+  }
+
+  if(!parsed || !parsed.isValid()){
+    output.innerHTML = `
+      <div class="result">
+        <div class="kv"><span>Status</span><span class="badge bad">Invalid number</span></div>
+      </div>
+      <div class="error-box">Couldn't parse this as a valid number. Check the country selection and format.</div>
+    `;
+    checkBtn.disabled = false;
+    checkBtn.textContent = 'Check Number';
+    return;
+  }
+
+  const e164 = parsed.number; // e.g. +639171234567
+  const info = {
+    formatted: parsed.formatInternational(),
+    country: parsed.country || 'Unknown',
+    type: parsed.getType() || 'Unknown',
+    valid: parsed.isValid(),
+    carrier: parsed.country === 'PH'
+      ? guessPhCarrier(parsed.nationalNumber) + ' (likely — porting may differ)'
+      : 'Carrier lookup only available for PH numbers in this tool',
+  };
+
+  const validationHtml = `
+    <div class="result">
+      <p class="section-title">Number Info</p>
+      <div class="kv"><span>Status</span><span class="badge good">Valid</span></div>
+      <div class="kv"><span>Formatted</span><span>${escapeHtml(info.formatted)}</span></div>
+      <div class="kv"><span>Country</span><span>${escapeHtml(info.country)}</span></div>
+      <div class="kv"><span>Line type</span><span>${escapeHtml(String(info.type)).replace('_',' ')}</span></div>
+      <div class="kv"><span>Provider</span><span>${escapeHtml(info.carrier)}</span></div>
+    </div>
+  `;
+
+  output.innerHTML = validationHtml + '<p class="loading" style="margin-top:14px;">Checking breach databases…</p>';
+
+  // --- Step 2: Breach check via LeakCheck public API (free, no key) ---
+  try {
+    // Routed through a serverless proxy (/api/breach-check) because LeakCheck's
+    // public API blocks direct browser (CORS) requests. See api/breach-check.js.
+    const url = `/api/breach-check?check=${encodeURIComponent(e164)}`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+
+    if(!res.ok){
+      throw new Error(`API returned ${res.status}`);
+    }
+
+    const data = await res.json();
+    let breachHtml = '';
+
+    if(data.success && Array.isArray(data.sources) && data.sources.length > 0){
+      breachHtml = `
+        <div class="result">
+          <p class="section-title">Breach Check — ${data.found ?? data.sources.length} source(s) found</p>
+          ${data.sources.map(s => `
+            <div class="breach-item">
+              <b>${escapeHtml(s.name || 'Unknown source')}</b>
+              <span class="cats">${s.date ? 'Date: ' + escapeHtml(String(s.date)) : ''}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else {
+      breachHtml = `
+        <div class="result">
+          <p class="section-title">Breach Check</p>
+          <div class="kv"><span>Result</span><span class="badge good">No known breaches found</span></div>
+        </div>
+      `;
+    }
+
+    output.innerHTML = validationHtml + breachHtml;
+
+  } catch (err) {
+    output.innerHTML = validationHtml + `
+      <div class="error-box">
+        Breach check failed (${escapeHtml(err.message)}). This can happen if the browser blocks the request (CORS) — if it persists, a small serverless proxy function would fix it.
+      </div>
+    `;
+  }
+
+  checkBtn.disabled = false;
+  checkBtn.textContent = 'Check Number';
+}
+
+checkBtn.addEventListener('click', checkNumber);
+phoneInput.addEventListener('keydown', e => { if(e.key === 'Enter') checkNumber(); });
+</script>
+</body>
+</html>
